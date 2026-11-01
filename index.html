@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Study Planner</title>
+<style>
+  :root {
+    --bg: #eef3f1;
+    --surface: #ffffff;
+    --ink: #1c2b2a;
+    --muted: #5d6f6c;
+    --line: #d3deda;
+    --accent: #1f6f66;
+    --accent-ink: #ffffff;
+    --danger: #b3402f;
+    --done: #8aa09b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px;
+    background: var(--bg); color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.5;
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 2rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-family: system-ui, sans-serif; font-size: .95rem; }
+  form, .toolbar, ul, .empty {
+    font-family: system-ui, sans-serif;
+  }
+  form {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px; display: grid; gap: 12px;
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .row { grid-template-columns: 1fr; } }
+  label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+  input, select {
+    font: inherit; font-size: 1rem; padding: 10px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 3px solid var(--accent); outline-offset: 2px;
+  }
+  button {
+    font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid transparent;
+    padding: 10px 14px;
+  }
+  .add { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .add:hover { filter: brightness(1.1); }
+  #error { color: var(--danger); font-size: .9rem; min-height: 1.2em; margin: 0; }
+  .toolbar { display: flex; gap: 8px; margin: 24px 0 12px; flex-wrap: wrap; align-items: center; }
+  .toolbar button { background: transparent; border-color: var(--line); color: var(--ink); padding: 6px 12px; font-size: .9rem; }
+  .toolbar button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .count { margin-left: auto; color: var(--muted); font-size: .9rem; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  li {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 5px solid var(--accent); border-radius: 8px; padding: 12px;
+  }
+  li.high { border-left-color: var(--danger); }
+  li.low { border-left-color: var(--done); }
+  li input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+  .text { flex: 1; min-width: 0; }
+  .title { font-weight: 600; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: .85rem; }
+  li.done .title { text-decoration: line-through; color: var(--done); }
+  li.done { opacity: .85; }
+  .del { background: transparent; color: var(--danger); border-color: var(--line); padding: 6px 10px; font-size: .85rem; }
+  .del:hover { background: var(--danger); color: #fff; }
+  .empty {
+    background: var(--surface); border: 1px dashed var(--line); border-radius: 10px;
+    padding: 28px 16px; text-align: center; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Study Planner</h1>
+  <p class="sub">Add your assignments and study tasks, then tick them off as you finish.</p>
+
+  <form id="form" novalidate>
+    <label>Task title
+      <input id="title" type="text" maxlength="100" placeholder="e.g. Finish chapter 4 exercises" autocomplete="off">
+    </label>
+    <div class="row">
+      <label>Subject or course
+        <input id="subject" type="text" maxlength="60" placeholder="e.g. Database Systems" autocomplete="off">
+      </label>
+      <label>Priority
+        <select id="priority">
+          <option value="high">High</option>
+          <option value="medium" selected>Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </label>
+    </div>
+    <p id="error" role="alert"></p>
+    <button class="add" type="submit">Add task</button>
+  </form>
+
+  <div class="toolbar" role="group" aria-label="Filter tasks">
+    <button type="button" data-filter="all" aria-pressed="true">All</button>
+    <button type="button" data-filter="active" aria-pressed="false">To do</button>
+    <button type="button" data-filter="done" aria-pressed="false">Completed</button>
+    <span class="count" id="count"></span>
+  </div>
+
+  <ul id="list"></ul>
+  <div class="empty" id="empty" hidden></div>
+</main>
+
+<script>
+  var KEY = "studyPlannerTasks";
+  var tasks = load();
+  var filter = "all";
+
+  var form = document.getElementById("form");
+  var titleEl = document.getElementById("title");
+  var subjectEl = document.getElementById("subject");
+  var priorityEl = document.getElementById("priority");
+  var errorEl = document.getElementById("error");
+  var listEl = document.getElementById("list");
+  var emptyEl = document.getElementById("empty");
+  var countEl = document.getElementById("count");
+
+  function load() {
+    try {
+      var data = JSON.parse(localStorage.getItem(KEY));
+      return Array.isArray(data) ? data : [];
+    } catch (e) { return []; }
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch (e) {}
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var title = titleEl.value.trim();
+    if (!title) {
+      errorEl.textContent = "Please enter a task title before adding.";
+      titleEl.focus();
+      return;
+    }
+    errorEl.textContent = "";
+    tasks.unshift({
+      id: Date.now(),
+      title: title,
+      subject: subjectEl.value.trim(),
+      priority: priorityEl.value,
+      done: false
+    });
+    save();
+    titleEl.value = "";
+    subjectEl.value = "";
+    priorityEl.value = "medium";
+    titleEl.focus();
+    render();
+  });
+
+  titleEl.addEventListener("input", function () { errorEl.textContent = ""; });
+
+  document.querySelector(".toolbar").addEventListener("click", function (e) {
+    var f = e.target.getAttribute("data-filter");
+    if (!f) return;
+    filter = f;
+    var btns = document.querySelectorAll(".toolbar button");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].setAttribute("aria-pressed", btns[i] === e.target ? "true" : "false");
+    }
+    render();
+  });
+
+  listEl.addEventListener("click", function (e) {
+    var id = Number(e.target.getAttribute("data-del"));
+    if (!id) return;
+    tasks = tasks.filter(function (t) { return t.id !== id; });
+    save();
+    render();
+  });
+
+  listEl.addEventListener("change", function (e) {
+    var id = Number(e.target.getAttribute("data-toggle"));
+    if (!id) return;
+    tasks.forEach(function (t) { if (t.id === id) t.done = e.target.checked; });
+    save();
+    render();
+  });
+
+  function esc(s) {
+    return s.replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function render() {
+    var visible = tasks.filter(function (t) {
+      return filter === "all" || (filter === "done" ? t.done : !t.done);
+    });
+    var remaining = tasks.filter(function (t) { return !t.done; }).length;
+    countEl.textContent = tasks.length ? remaining + " of " + tasks.length + " left" : "";
+
+    listEl.innerHTML = visible.map(function (t) {
+      var label = t.priority.charAt(0).toUpperCase() + t.priority.slice(1) + " priority";
+      return '<li class="' + t.priority + (t.done ? " done" : "") + '">' +
+        '<input type="checkbox" data-toggle="' + t.id + '" ' + (t.done ? "checked" : "") +
+        ' aria-label="Mark &quot;' + esc(t.title) + '&quot; complete">' +
+        '<div class="text"><div class="title">' + esc(t.title) + '</div>' +
+        '<div class="meta">' + (t.subject ? esc(t.subject) + " · " : "") + label + '</div></div>' +
+        '<button class="del" type="button" data-del="' + t.id + '" aria-label="Delete ' + esc(t.title) + '">Delete</button>' +
+        '</li>';
+    }).join("");
+
+    if (visible.length === 0) {
+      emptyEl.hidden = false;
+      if (tasks.length === 0) emptyEl.textContent = "No tasks yet. Add your first study task above to get started.";
+      else if (filter === "done") emptyEl.textContent = "No completed tasks yet. Tick a task when you finish it.";
+      else emptyEl.textContent = "Nothing left to do. Nice work!";
+    } else {
+      emptyEl.hidden = true;
+    }
+  }
+
+  render();
+</script>
+</body>
+</html>
